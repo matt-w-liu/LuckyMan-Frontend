@@ -9,7 +9,18 @@ interface CardDealAnimationProps {
   isAnimating: boolean
 }
 
-const ANIMATION_DURATION = 1000 // milliseconds - slightly longer for deal animation
+/** How long a single card takes to travel from the deck to its player. */
+const FLIGHT = 420
+
+/**
+ * Delay between one card setting off and the next. Equal to the flight time, so
+ * each card has landed before the following one leaves — the deck deals round
+ * the table one player at a time rather than throwing everything at once.
+ */
+const GAP = 420
+
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 
 export default function CardDealAnimation({
   cardCount,
@@ -18,7 +29,7 @@ export default function CardDealAnimation({
   onAnimationComplete,
   isAnimating,
 }: CardDealAnimationProps) {
-  const [progress, setProgress] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
   const animationRef = useRef<number | null>(null)
   const onCompleteRef = useRef(onAnimationComplete)
 
@@ -27,29 +38,26 @@ export default function CardDealAnimation({
     onCompleteRef.current = onAnimationComplete
   }, [onAnimationComplete])
 
+  // One card per player, capped by however many landing spots we were given.
+  const dealCount = Math.min(cardCount, endPositions.length)
+
   useEffect(() => {
     if (!isAnimating) {
-      setProgress(0)
+      setElapsed(0)
       return
     }
 
+    // The last card sets off only after everyone before it has been served.
+    const total = Math.max(dealCount - 1, 0) * GAP + FLIGHT
     const startTime = performance.now()
 
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime
-      const currentProgress = Math.min(elapsed / ANIMATION_DURATION, 1)
+    const animate = (now: number) => {
+      const since = now - startTime
+      setElapsed(since)
 
-      // Ease-in-out cubic function for smooth animation
-      const easeInOutCubic = currentProgress < 0.5
-        ? 4 * currentProgress * currentProgress * currentProgress
-        : 1 - Math.pow(-2 * currentProgress + 2, 3) / 2
-
-      setProgress(easeInOutCubic)
-
-      if (currentProgress < 1) {
+      if (since < total) {
         animationRef.current = requestAnimationFrame(animate)
       } else {
-        // Animation complete
         setTimeout(() => {
           onCompleteRef.current()
         }, 50)
@@ -64,21 +72,9 @@ export default function CardDealAnimation({
         animationRef.current = null
       }
     }
-  }, [isAnimating])
+  }, [isAnimating, dealCount])
 
-  if (!isAnimating || cardCount === 0 || endPositions.length === 0) {
-    return null
-  }
-
-  // Use the actual number of positions available (one card per player)
-  const actualCardCount = Math.min(cardCount, endPositions.length)
-  
-  // Validate arrays match - cardCount should equal endPositions.length (one card per player)
-  if (cardCount !== endPositions.length) {
-    // Length mismatch, but continue with actualCardCount
-  }
-  
-  if (actualCardCount === 0) {
+  if (!isAnimating || dealCount === 0 || endPositions.length === 0) {
     return null
   }
 
@@ -89,33 +85,35 @@ export default function CardDealAnimation({
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[10000]">
-      {endPositions.slice(0, actualCardCount).map((endPos, index) => {
+      {endPositions.slice(0, dealCount).map((endPos, index) => {
         // Validate end position
         if (!endPos || (endPos.x === 0 && endPos.y === 0)) {
           return null
         }
 
-        // Stagger animation slightly for each card (0.1s delay per card)
-        const cardDelay = index * 0.1
-        const adjustedProgress = Math.max(0, Math.min(1, (progress * ANIMATION_DURATION - cardDelay * 1000) / ANIMATION_DURATION))
-
-        if (adjustedProgress <= 0) {
-          return null // Card hasn't started animating yet
+        // Each card waits its turn, then flies on its own clock.
+        const local = (elapsed - index * GAP) / FLIGHT
+        if (local <= 0) {
+          return null // this player has not been dealt to yet
         }
 
-        const adjustedX = startPosition.x + (endPos.x - startPosition.x) * adjustedProgress
-        const adjustedY = startPosition.y + (endPos.y - startPosition.y) * adjustedProgress
+        // Once it lands the card stays put: the real one only appears when the
+        // whole deal finishes and the new room state is applied.
+        const progress = easeInOutCubic(Math.min(local, 1))
+
+        const x = startPosition.x + (endPos.x - startPosition.x) * progress
+        const y = startPosition.y + (endPos.y - startPosition.y) * progress
         // Dealt cards fly flat — no tumble on the way to a placeholder or hand.
-        const adjustedScale = 1 + Math.sin(adjustedProgress * Math.PI) * 0.15
+        const scale = 1 + Math.sin(progress * Math.PI) * 0.15
 
         return (
           <div
             key={`deal-${index}`}
             className="absolute"
             style={{
-              left: `${adjustedX}px`,
-              top: `${adjustedY}px`,
-              transform: `translate(-50%, -50%) scale(${adjustedScale})`,
+              left: `${x}px`,
+              top: `${y}px`,
+              transform: `translate(-50%, -50%) scale(${scale})`,
               zIndex: 10000 + index,
               transition: 'none', // Disable CSS transitions, we're using JS animation
               willChange: 'transform', // Optimize for animation
@@ -124,8 +122,7 @@ export default function CardDealAnimation({
             <Card suit={0} rank={0} isFaceDown={true} />
           </div>
         )
-      }).filter(Boolean)}
+      })}
     </div>
   )
 }
-
