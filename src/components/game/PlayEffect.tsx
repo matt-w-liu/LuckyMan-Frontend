@@ -26,13 +26,13 @@ interface Particle {
   gravity: number
 }
 
-const LABEL: Record<EffectKind, string> = {
-  triplets: 'Triplets',
-  quads: 'Quads',
-  straight: 'Straight',
-  twinStraight: 'Twin straight',
-  so: 'So — black joker',
-  ta: 'Ta — red joker',
+const TITLE: Record<EffectKind, string> = {
+  triplets: 'Triplet Cards',
+  quads: 'Quads Cards',
+  straight: 'Straight Cards',
+  twinStraight: 'Twin Straight Cards',
+  so: 'So — Black Joker',
+  ta: 'Ta — Red Joker',
   taso: 'Ta + So',
 }
 
@@ -43,8 +43,49 @@ const BLOOD = ['#ff3d71', '#d91d52', '#ff9f1a', '#fff0f3']
 
 /** How far into the effect the impact lands, as a fraction of its run. */
 const IMPACT_AT: Partial<Record<EffectKind, number>> = {
-  triplets: 0.45,
-  quads: 0.5,
+  triplets: 0.42,
+  quads: 0.46,
+}
+
+/** How hard the board shakes on impact, in pixels, and for how long. */
+const SHAKE: Partial<Record<EffectKind, { amount: number; span: number }>> = {
+  triplets: { amount: 13, span: 0.3 },
+  quads: { amount: 24, span: 0.36 },
+}
+
+/** When the title is on screen, as a fraction of the run. */
+const titleWindow = (kind: EffectKind): { from: number; to: number } => {
+  if (kind === 'triplets' || kind === 'quads') {
+    const at = IMPACT_AT[kind] ?? 0
+    return { from: at, to: Math.min(at + 0.5, 1) }
+  }
+  // The train and plane slow to a crawl through the middle; the title rides
+  // along with that pause.
+  if (kind === 'straight' || kind === 'twinStraight') return { from: 0.33, to: 0.7 }
+  return { from: 0, to: 0.7 }
+}
+
+/**
+ * Where a crossing sprite is along its path, 0..1.
+ *
+ * It sweeps in quickly, crawls through the middle of the board so the title can
+ * be read, then speeds away again.
+ */
+const CRAWL_IN = 0.3
+const CRAWL_OUT = 0.72
+const CRAWL_FROM = 0.4
+const CRAWL_TO = 0.58
+
+const smooth = (x: number) => x * x * (3 - 2 * x)
+
+const crossProgress = (t: number): number => {
+  if (t <= CRAWL_IN) return smooth(t / CRAWL_IN) * CRAWL_FROM
+  if (t <= CRAWL_OUT) {
+    const inner = (t - CRAWL_IN) / (CRAWL_OUT - CRAWL_IN)
+    return CRAWL_FROM + inner * (CRAWL_TO - CRAWL_FROM)
+  }
+  const tail = (t - CRAWL_OUT) / (1 - CRAWL_OUT)
+  return CRAWL_TO + smooth(tail) * (1 - CRAWL_TO)
 }
 
 const prefersReducedMotion = () =>
@@ -68,6 +109,8 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
 
+    const shakeRoot = document.querySelector<HTMLElement>('[data-shake-root]')
+
     let width = window.innerWidth
     let height = window.innerHeight
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -85,6 +128,8 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
 
     const duration = EFFECT_DURATION[kind]
     const impactAt = IMPACT_AT[kind] ?? 0
+    const shake = SHAKE[kind]
+    const title = titleWindow(kind)
     const particles: Particle[] = []
     const rand = (a: number, b: number) => a + Math.random() * (b - a)
     const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)]
@@ -126,9 +171,10 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
     const rings: Array<{ x: number; y: number; born: number; max: number; colour: string }> = []
 
     const boom = (x: number, y: number, scale: number, palette: string[], at: number) => {
-      spawn(x, y, Math.round(70 * scale), palette, { speed: 13 * scale, size: 13, gravity: 0.2 })
-      spawn(x, y, Math.round(26 * scale), SMOKE, { speed: 5, size: 22, gravity: -0.03, life: 95 })
-      rings.push({ x, y, born: at, max: 190 * scale, colour: palette[0] })
+      spawn(x, y, Math.round(90 * scale), palette, { speed: 15 * scale, size: 16, gravity: 0.2 })
+      spawn(x, y, Math.round(34 * scale), SMOKE, { speed: 6, size: 30, gravity: -0.03, life: 110 })
+      rings.push({ x, y, born: at, max: 230 * scale, colour: palette[0] })
+      rings.push({ x, y, born: at + 7, max: 160 * scale, colour: '#fff6cf' })
     }
 
     let frame = 0
@@ -148,18 +194,18 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
           // Bomb lobbed from the seat, arcing up and into the middle.
           const p = Math.min(t / impactAt, 1)
           const x = origin.x + (target.x - origin.x) * p
-          const y = origin.y + (target.y - origin.y) * p - Math.sin(p * Math.PI) * 160
+          const y = origin.y + (target.y - origin.y) * p - Math.sin(p * Math.PI) * 190
           sprite.style.transform =
             'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) rotate(' + p * 540 + 'deg)'
           sprite.style.opacity = t < impactAt ? '1' : '0'
           if (t < impactAt && frame % 3 === 0) {
-            spawn(x + 14, y - 14, 2, FIRE, { speed: 1.6, size: 6, gravity: -0.04, life: 26 })
+            spawn(x + 22, y - 22, 2, FIRE, { speed: 1.8, size: 8, gravity: -0.04, life: 28 })
           }
         } else if (kind === 'quads') {
           // Missile comes in steeply from off-screen and homes on the middle.
           const p = Math.min(t / impactAt, 1)
-          const fromX = target.x + width * 0.55
-          const fromY = target.y - height * 0.8
+          const fromX = target.x + width * 0.6
+          const fromY = target.y - height * 0.9
           const x = fromX + (target.x - fromX) * p
           const y = fromY + (target.y - fromY) * p
           const angle = (Math.atan2(target.y - fromY, target.x - fromX) * 180) / Math.PI
@@ -167,28 +213,30 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
             'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) rotate(' + angle + 'deg)'
           sprite.style.opacity = t < impactAt ? '1' : '0'
           if (t < impactAt) {
-            spawn(x, y, 3, SMOKE, { speed: 1.4, size: 13, gravity: -0.05, life: 55 })
-            spawn(x, y, 2, FIRE, { speed: 2, size: 7, gravity: 0, life: 22 })
+            spawn(x, y, 4, SMOKE, { speed: 1.6, size: 18, gravity: -0.05, life: 65 })
+            spawn(x, y, 2, FIRE, { speed: 2.2, size: 9, gravity: 0, life: 24 })
           }
         } else if (kind === 'straight') {
-          // Train runs the width of the board, chuffing smoke.
-          const x = -220 + (width + 440) * t
+          // Train sweeps in, crawls past the middle, then pulls away.
+          const p = crossProgress(t)
+          const x = -280 + (width + 560) * p
           sprite.style.transform = 'translate(' + x + 'px,' + target.y + 'px) translate(-50%,-50%)'
           if (frame % 2 === 0) {
-            spawn(x - 42, target.y - 40, 2, SMOKE, { speed: 1.1, size: 20, gravity: -0.07, life: 70 })
+            spawn(x - 70, target.y - 62, 2, SMOKE, { speed: 1.2, size: 26, gravity: -0.07, life: 80 })
           }
         } else if (kind === 'twinStraight') {
-          // Plane crosses the other way, trailing vapour.
-          const x = width + 220 - (width + 440) * t
-          const y = target.y - Math.sin(t * Math.PI) * 60
+          // Plane crosses the other way, with the same pause in the middle.
+          const p = crossProgress(t)
+          const x = width + 280 - (width + 560) * p
+          const y = target.y - Math.sin(p * Math.PI) * 50
           sprite.style.transform =
             'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) scaleX(-1)'
           if (frame % 2 === 0) {
-            spawn(x + 70, y + 4, 2, ['#e6ecfa', '#b6c0d4'], {
-              speed: 0.7,
-              size: 12,
+            spawn(x + 110, y + 6, 2, ['#e6ecfa', '#b6c0d4'], {
+              speed: 0.8,
+              size: 14,
               gravity: -0.01,
-              life: 80,
+              life: 90,
             })
           }
         }
@@ -197,8 +245,8 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
       // ---- impact ----
       if (!impacted && t >= impactAt) {
         impacted = true
-        if (kind === 'triplets') boom(target.x, target.y, 1, FIRE, frame)
-        if (kind === 'quads') boom(target.x, target.y, 1.5, FIRE, frame)
+        if (kind === 'triplets') boom(target.x, target.y, 1.25, FIRE, frame)
+        if (kind === 'quads') boom(target.x, target.y, 1.9, FIRE, frame)
         if (kind === 'so') {
           spawn(target.x, target.y, 90, DARK, { speed: 11, size: 15, gravity: 0.05, life: 80 })
           spawn(target.x, target.y, 26, DARK, {
@@ -236,6 +284,20 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
         }
       }
 
+      // ---- screen shake, decaying after the blast ----
+      if (shakeRoot) {
+        const since = t - impactAt
+        if (shake && impacted && since >= 0 && since < shake.span) {
+          const decay = 1 - since / shake.span
+          const amount = shake.amount * decay * decay
+          const dx = (Math.random() - 0.5) * 2 * amount
+          const dy = (Math.random() - 0.5) * 2 * amount
+          shakeRoot.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'
+        } else if (shakeRoot.style.transform) {
+          shakeRoot.style.transform = ''
+        }
+      }
+
       // ---- shockwaves ----
       for (let i = rings.length - 1; i >= 0; i -= 1) {
         const ring = rings[i]
@@ -249,7 +311,7 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
         ctx.save()
         ctx.globalAlpha = (1 - p) * 0.75
         ctx.strokeStyle = ring.colour
-        ctx.lineWidth = 8 * (1 - p) + 1
+        ctx.lineWidth = 10 * (1 - p) + 1
         ctx.beginPath()
         ctx.arc(ring.x, ring.y, ring.max * p, 0, Math.PI * 2)
         ctx.stroke()
@@ -290,18 +352,49 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
         ctx.restore()
       }
 
-      // ---- label fades in then out ----
+      // ---- title, bursting in with a halo behind it ----
       const label = labelRef.current
       if (label) {
-        const show = Math.min(t / 0.2, 1) * (1 - Math.max(0, (t - 0.65) / 0.35))
-        const amount = Math.max(show, 0)
-        label.style.opacity = String(amount)
-        label.style.transform = 'translate(-50%,-50%) scale(' + (0.9 + amount * 0.15) + ')'
+        const span = title.to - title.from
+        const age = span > 0 ? (t - title.from) / span : 0
+        if (age < 0 || age > 1) {
+          label.style.opacity = '0'
+        } else {
+          // Snap in, hold, then fade away.
+          const rise = Math.min(age / 0.16, 1)
+          const fall = 1 - Math.max(0, (age - 0.74) / 0.26)
+          const shown = Math.max(Math.min(rise, fall), 0)
+          // Overshoot on the way in so it lands with a thump.
+          const pop = rise < 1 ? 0.55 + 0.72 * rise : 1 + 0.12 * Math.max(0, 1 - (age - 0.16) * 6)
+          const glow = 18 + Math.sin(age * Math.PI * 6) * 8
+          label.style.opacity = String(shown)
+          label.style.transform = 'translate(-50%,-50%) scale(' + pop + ')'
+          label.style.textShadow =
+            '0 0 ' + glow + 'px currentColor, 0 0 ' + glow * 2.4 + 'px currentColor, 0 3px 10px rgba(0,0,0,0.95)'
+
+          // A halo of light behind the words.
+          const halo = shown * 0.5
+          if (halo > 0.02) {
+            const cx = target.x
+            const cy = target.y - 150
+            const radius = 190 * (0.6 + shown * 0.6)
+            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
+            gradient.addColorStop(0, 'rgba(255,240,190,' + halo * 0.5 + ')')
+            gradient.addColorStop(1, 'rgba(255,240,190,0)')
+            ctx.save()
+            ctx.fillStyle = gradient
+            ctx.beginPath()
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.restore()
+          }
+        }
       }
 
       if (t < 1) {
         raf = window.requestAnimationFrame(tick)
       } else {
+        if (shakeRoot) shakeRoot.style.transform = ''
         doneRef.current()
       }
     }
@@ -310,6 +403,8 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
     return () => {
       window.cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
+      // Never leave the board nudged off-centre.
+      if (shakeRoot) shakeRoot.style.transform = ''
     }
   }, [kind, target.x, target.y, origin.x, origin.y])
 
@@ -344,12 +439,12 @@ export default function PlayEffect({ kind, target, origin, onDone }: PlayEffectP
       <div
         ref={labelRef}
         className={
-          'absolute whitespace-nowrap text-2xl font-extrabold uppercase tracking-[0.3em] opacity-0 drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)] ' +
+          'absolute whitespace-nowrap text-4xl font-extrabold uppercase tracking-[0.2em] opacity-0 will-change-transform ' +
           labelTone
         }
-        style={{ left: target.x, top: target.y - 120 }}
+        style={{ left: target.x, top: target.y - 150 }}
       >
-        {LABEL[kind]}
+        {TITLE[kind]}
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 /** Inline sprites for the play flourishes. Drawn as SVG so they stay crisp. */
 
-export function BombSprite({ size = 58 }: { size?: number }) {
+export function BombSprite({ size = 104 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
       <defs>
@@ -20,7 +20,7 @@ export function BombSprite({ size = 58 }: { size?: number }) {
   )
 }
 
-export function MissileSprite({ size = 70 }: { size?: number }) {
+export function MissileSprite({ size = 132 }: { size?: number }) {
   return (
     <svg width={size} height={size * 0.42} viewBox="0 0 100 42" aria-hidden="true">
       <path d="M2 21 L22 8 L74 8 Q96 21 74 34 L22 34 Z" fill="#b6c0d4" />
@@ -33,7 +33,7 @@ export function MissileSprite({ size = 70 }: { size?: number }) {
   )
 }
 
-export function TrainSprite({ size = 120 }: { size?: number }) {
+export function TrainSprite({ size = 210 }: { size?: number }) {
   return (
     <svg width={size} height={size * 0.6} viewBox="0 0 200 120" aria-hidden="true">
       {/* chimney + cab */}
@@ -53,7 +53,7 @@ export function TrainSprite({ size = 120 }: { size?: number }) {
   )
 }
 
-export function PlaneSprite({ size = 120 }: { size?: number }) {
+export function PlaneSprite({ size = 220 }: { size?: number }) {
   return (
     <svg width={size} height={size * 0.5} viewBox="0 0 200 100" aria-hidden="true">
       <path d="M10 52 L120 40 Q176 40 192 50 Q176 60 120 60 L10 48 Z" fill="#e6ecfa" />
