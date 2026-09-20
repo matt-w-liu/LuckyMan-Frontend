@@ -16,9 +16,14 @@ export interface RunCard {
 /** Shortest run the table allows, counted in ranks rather than cards. */
 export const MIN_RUN = 3
 
-/** Ranks a card can hold: 1 is the 3, 13 is the 2. Jokers carry 0. */
+/**
+ * Ranks a card can hold: 1 is the 3, 13 is the 2. Jokers carry 0.
+ *
+ * A run stops at the Ace. The 2 is the highest single card in the game and is
+ * never part of a straight or twin straight, so runs live inside 1..12.
+ */
 const MIN_RANK = 1
-const MAX_RANK = 13
+const MAX_RUN_RANK = 12
 
 const isJoker = (card: RunCard): boolean => card.number === 0
 
@@ -41,14 +46,15 @@ const runShape = (cards: readonly RunCard[], perRank: number): RunShape | null =
   if (total === 0 || total % perRank !== 0) return null
 
   const runLength = total / perRank
-  if (runLength < MIN_RUN || runLength > MAX_RANK) return null
+  if (runLength < MIN_RUN || runLength > MAX_RUN_RANK) return null
 
   const real = cards.filter((card) => !isJoker(card))
 
   // No rank may appear more often than the run has room for.
   const seen = new Map<number, number>()
   for (const card of real) {
-    if (card.number < MIN_RANK || card.number > MAX_RANK) return null
+    // Rejects the 2 (rank 13) outright, along with anything out of range.
+    if (card.number < MIN_RANK || card.number > MAX_RUN_RANK) return null
     const next = (seen.get(card.number) ?? 0) + 1
     if (next > perRank) return null
     seen.set(card.number, next)
@@ -63,7 +69,7 @@ const runShape = (cards: readonly RunCard[], perRank: number): RunShape | null =
   if (highestCard - lowestCard + 1 > runLength) return null
 
   // The run has to cover every real card and stay inside the rank range.
-  const highestStart = Math.min(lowestCard, MAX_RANK - runLength + 1)
+  const highestStart = Math.min(lowestCard, MAX_RUN_RANK - runLength + 1)
   const lowestStart = Math.max(MIN_RANK, highestCard - runLength + 1)
   if (highestStart < lowestStart) return null
 
