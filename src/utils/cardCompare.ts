@@ -1,13 +1,13 @@
 // Card comparison utilities
 import { Card } from './cardValidation'
 import { guessValidationCheck } from './cardValidation'
+import { isStraight, isTwinStraight, runRange } from './cardRuns'
 
 const ZERO = 0;
 const ONE = 1;
 const TWO = 2;
 const THREE = 3;
 const FOUR = 4;
-const FIVE = 5;
 
 const checkOneCard = (obj: Card[]): boolean => {
   if (obj.length === ONE) {
@@ -17,17 +17,14 @@ const checkOneCard = (obj: Card[]): boolean => {
 
 // 같은 두패인가 검사
 const checkTwinsCard = (obj: Card[]): boolean => {
-  if (obj.length === TWO) {
-    if (obj[0].number === ZERO && obj[1].number === ZERO) return false;
-    if (obj[0].number === obj[1].number && obj[0].number !== ZERO) {
-      return true;
-    } else if (obj[0].number === obj[1].number && obj[1].number !== ZERO){
-      return true;
-    } else if (obj[0].number !== obj[1].number) {
-      if (obj[0].number === ZERO || obj[1].number === ZERO) return true;
-    }
-  }
-  return false;
+  if (obj.length !== TWO) return false
+  const jokers = obj.filter((card) => card.number === ZERO).length
+  // Ta + So together is the bomb, not a pair.
+  if (jokers === TWO) return false
+  // A lone joker takes the rank of the card beside it.
+  if (jokers === ONE) return true
+  // Two ordinary cards must be the same rank.
+  return obj[0].number === obj[1].number
 };
 
 
@@ -131,155 +128,11 @@ const checkQuadsCard = (obj: Card[]): boolean => {
   return false;
 };
 
-const checkTwinStraightCardStatus = (obj: Card[]): boolean => {
-  return (
-    obj[1].number - obj[0].number === ZERO &&
-    obj[3].number - obj[2].number === ZERO &&
-    obj[5].number - obj[4].number === ZERO &&
-    obj[7].number - obj[6].number === ZERO &&
-    obj[9].number - obj[8].number === ZERO &&
-    obj[2].number - obj[0].number === ONE &&
-    obj[4].number - obj[2].number === ONE &&
-    obj[6].number - obj[4].number === ONE &&
-    obj[8].number - obj[6].number === ONE
-  );
-};
+// Straights and twin straights are any run of MIN_RUN ranks or more, so the
+// shape checks live in cardRuns.ts.
+const checkStraightCard = (obj: Card[]): boolean => isStraight(obj)
 
-// 련속5패-닐리리 검사
-const checkStraightCard = (obj: Card[]): boolean => {
-  if (obj.length === FIVE) {
-    // 처음에는 수값으로, 다음에는 꽃형타로 정렬
-    obj.sort(function (a, b) {
-      return a.number - b.number ? a.number - b.number : a.type - b.type;
-    });
-    if (
-      // 따-쏘가 하나도 존재하지 않을때
-      obj[1].number - obj[0].number === ONE &&
-      obj[2].number - obj[1].number === ONE &&
-      obj[3].number - obj[2].number === ONE &&
-      obj[4].number - obj[3].number === ONE
-    ) {
-      return true;
-    }
-    if (
-      // 따-소 중에서 하나만 존재할때
-      obj[0].number === ZERO &&
-      obj[1].number !== ZERO
-    ) {
-      let tmp = obj[2].number - obj[1].number;
-      if (tmp === ZERO) {
-        return false;
-      }
-      tmp = obj[3].number - obj[2].number;
-      if (tmp === ZERO) {
-        return false;
-      }
-      tmp = obj[4].number - obj[3].number;
-      if (tmp === ZERO) {
-        return false;
-      }
-      tmp = obj[4].number - obj[1].number;
-      if (tmp === FOUR || tmp === THREE) {
-        return true;
-      }
-    }
-
-    // 따소 둘다 있을때
-    if (obj[0].number === ZERO && obj[1].number === ZERO) {
-      let tmp = obj[3].number - obj[2].number;
-      if (tmp === ZERO) {
-        return false;
-      }
-      tmp = obj[4].number - obj[3].number;
-      if (tmp === ZERO) {
-        return false;
-      }
-      tmp = obj[4].number - obj[2].number;
-
-      if (tmp === TWO || tmp === THREE || tmp === FOUR) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-// 쌍련속5패-쌍닐리리 검사
-const checkTwinStraightCard = (obj: Card[]): boolean => {
-  if (obj.length === FIVE * 2) {
-    // 처음에는 수값으로, 다음에는 꽃형타로 정렬
-    obj.sort(function (a, b) {
-      return a.number - b.number ? a.number - b.number : a.type - b.type;
-    });
-    if (
-      // 따-쏘가 하나도 존재하지 않을떄
-      obj[0].number !== ZERO &&
-      checkTwinStraightCardStatus(obj)
-    ) {
-      return true;
-    }
-    if (
-      // 따-소 중에서 하나만 존재할때
-      obj[0].number === ZERO &&
-      obj[1].number !== ZERO
-    ) {
-      let obj2: Card[] = [];
-      for (let i = 1; i < 14; i++) {
-        obj2 = [];
-        for (let k = 0; k < obj.length; k++) {
-          obj2.push({
-            type: obj[k].type,
-            number: obj[k].number,
-          });
-        }
-        obj2[0].number = i;
-        obj2.sort(function (a, b) {
-          return a.number - b.number ? a.number - b.number : a.type - b.type;
-        });
-        if (checkTwinStraightCardStatus(obj2)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (
-      // 따-소 둘다 존재할떄
-      obj[0].number === ZERO &&
-      obj[1].number === ZERO
-    ) {
-      let obj2: Card[] = [];
-      for (let i = 1; i < 14; i++) {
-        obj2 = [];
-        for (let k = 0; k < obj.length; k++) {
-          obj2.push({
-            type: obj[k].type,
-            number: obj[k].number,
-          });
-        }
-        obj2[0].number = i;
-        let obj3: Card[] = [];
-        for (let j = 1; j < 14; j++) {
-          obj3 = [];
-          for (let k = 0; k < obj2.length; k++) {
-            obj3.push({
-              type: obj2[k].type,
-              number: obj2[k].number,
-            });
-          }
-          obj3[1].number = j;
-          obj3.sort(function (a, b) {
-            return a.number - b.number ? a.number - b.number : a.type - b.type;
-          });
-          if (checkTwinStraightCardStatus(obj3)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-  }
-  return false;
-};
+const checkTwinStraightCard = (obj: Card[]): boolean => isTwinStraight(obj)
 
 // 따소-폭탄인가 검사
 const checkBombCard = (obj: Card[]): boolean => {
@@ -307,6 +160,13 @@ export const cardCompareUtil = (param_former_cards: Card[], param_later_cards: C
   } else {
     later_cards = [...param_later_cards]  
   }
+  // The shape checks no longer sort as a side effect, and several of the
+  // comparisons below read cards by position, so order them here.
+  const byRank = (a: Card, b: Card) =>
+    a.number - b.number ? a.number - b.number : a.type - b.type;
+  former_cards.sort(byRank);
+  later_cards.sort(byRank);
+
   var result: boolean = false;
   var check_f: boolean;
   var check_l: boolean;
@@ -502,11 +362,10 @@ export const cardCompareUtil = (param_former_cards: Card[], param_later_cards: C
     check_l = checkStraightCard(later_cards);
 
     if (check_l === true) {
-      // +1 더 큰 닐리리로 눌렀을떄
-      if (
-        later_cards[0].number - former_cards[0].number === 1 &&
-        later_cards[4].number - former_cards[4].number === 1
-      ) {
+      // Beaten by a run of the same length sitting exactly one rank higher.
+      const before = runRange(former_cards, 1);
+      const after = runRange(later_cards, 1);
+      if (before && after && after.runLength === before.runLength && after.lo === before.lo + 1) {
         result = true;
         return result;
       }
@@ -531,11 +390,10 @@ export const cardCompareUtil = (param_former_cards: Card[], param_later_cards: C
     check_l = checkTwinStraightCard(later_cards);
 
     if (check_l === true) {
-      // +1 더 큰 닐리리로 눌렀을떄
-      if (
-        later_cards[0].number - former_cards[0].number === 1 &&
-        later_cards[8].number - former_cards[8].number === 1
-      ) {
+      // Beaten by a twin run of the same length one rank higher.
+      const before = runRange(former_cards, 2);
+      const after = runRange(later_cards, 2);
+      if (before && after && after.runLength === before.runLength && after.lo === before.lo + 1) {
         result = true;
         return result;
       }

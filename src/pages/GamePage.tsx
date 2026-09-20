@@ -416,8 +416,9 @@ export default function GamePage() {
       return
     }
 
-    // Validate card selection
-    const validation = guessValidationCheck(selectedCards)
+    // Validate the selection. Pass a copy — the validator sorts what it is
+    // given, and selectedCards is React state.
+    const validation = guessValidationCheck([...selectedCards])
     if (validation.status === 0) {
       setCanPlay(false)
       return
@@ -432,7 +433,7 @@ export default function GamePage() {
       setCanPlay(selectedCards.length > 0)
     } else {
       // Need to beat previous cards
-      const canBeat = cardCompareUtil(previousCards, selectedCards)
+      const canBeat = cardCompareUtil([...previousCards], [...selectedCards])
       setCanPlay(canBeat)
     }
   }, [selectedCards, gameStateKey, myIndex])
@@ -607,7 +608,7 @@ export default function GamePage() {
       return
     }
 
-    const validation = guessValidationCheck(selectedCards)
+    const validation = guessValidationCheck([...selectedCards])
     if (validation.status === 0) {
       setError(validation.msg)
       return
