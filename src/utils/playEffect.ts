@@ -1,24 +1,30 @@
 import type { Card } from './cardValidation'
+import { guessValidationCheck } from './cardValidation'
+import { isStraight, isTwinStraight } from './cardRuns'
 
 /**
  * Which flourish to play when a seat posts cards.
  *
- * The shape of a legal play is fully determined by how many cards it holds —
- * the hand validator only ever lets 1, 2, 3, 4, 5 or 10 cards be posted — so
- * the size tells us which combination was played. Jokers are the exception:
- * on their own they are the showpiece, so they get their own flourish.
+ * Straights and twin straights can now be any length from three ranks up, so a
+ * play's size no longer tells you its shape — a hand of three could be either a
+ * triplet or a short straight. The combination is therefore read with the same
+ * checks, and in the same order of precedence, that the hand validator uses.
  */
 export type EffectKind =
-  | 'triplets'      // 방  — three of a kind
+  | 'triplets'      // 방  — three or four of a kind
   | 'quads'         // 마대 — four of a kind
-  | 'straight'      // 닐리리 — five in a row
-  | 'twinStraight'  // 쌍닐리리 — five consecutive pairs
+  | 'straight'      // 닐리리 — a run of ranks
+  | 'twinStraight'  // 쌍닐리리 — a run of pairs
   | 'so'            // 소왕 — small (black) joker
   | 'ta'            // 따왕 — big (red) joker
   | 'taso'          // 따소 — both jokers, the bomb that beats everything
 
 const SO_TYPE = 4
 const TA_TYPE = 5
+
+/** Statuses guessValidationCheck reports for the two "of a kind" shapes. */
+const BANG_STATUS = 2
+const MADAE_STATUS = 3
 
 export const classifyPlay = (cards: Card[] | undefined | null): EffectKind | null => {
   if (!cards || cards.length === 0) return null
@@ -36,18 +42,17 @@ export const classifyPlay = (cards: Card[] | undefined | null): EffectKind | nul
     return null // an ordinary single or pair gets no flourish
   }
 
-  switch (cards.length) {
-    case 3:
-      return 'triplets'
-    case 4:
-      return 'quads'
-    case 5:
-      return 'straight'
-    case 10:
-      return 'twinStraight'
-    default:
-      return null
-  }
+  // Three or four of a kind take precedence over a run of the same size,
+  // matching the order the validator resolves them in. Hand it a copy: it
+  // sorts whatever it is given.
+  const status = guessValidationCheck([...cards]).status
+  if (status === MADAE_STATUS) return 'quads'
+  if (status === BANG_STATUS) return 'triplets'
+
+  if (isTwinStraight(cards)) return 'twinStraight'
+  if (isStraight(cards)) return 'straight'
+
+  return null
 }
 
 /** How long each flourish runs, in milliseconds. */
