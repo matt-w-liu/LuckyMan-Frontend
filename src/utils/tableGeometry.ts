@@ -151,3 +151,6 @@ export const fanOffset = (
   step: number,
   leftward: boolean
 ): number => (leftward ? -(count - 1 - index) * step : index * step)
+
+/** Cards dealt to each player at the start of a round — mirrors the backend. */
+export const INITIAL_HANDCARDS_COUNT = 5

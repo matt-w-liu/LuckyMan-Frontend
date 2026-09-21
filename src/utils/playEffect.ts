@@ -57,10 +57,10 @@ export const classifyPlay = (cards: Card[] | undefined | null): EffectKind | nul
 
 /** How long each flourish runs, in milliseconds. */
 export const EFFECT_DURATION: Record<EffectKind, number> = {
-  triplets: 1500,
-  quads: 1700,
-  straight: 1900,
-  twinStraight: 1900,
+  triplets: 1900,
+  quads: 2100,
+  straight: 3200,
+  twinStraight: 3200,
   so: 1400,
   ta: 1500,
   taso: 1800,

@@ -12,7 +12,7 @@ interface AppShellProps {
 export default function AppShell({ children, variant = 'page' }: AppShellProps) {
   return (
     <ProtectedRoute>
-      <div className="flex h-screen flex-col overflow-hidden bg-ink-900">
+      <div data-shake-root className="flex h-screen flex-col overflow-hidden bg-ink-900">
         <TopBar />
         <div className="flex min-h-0 flex-1">
           <SideRail />

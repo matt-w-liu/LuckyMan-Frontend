@@ -35,6 +35,13 @@ export const fanStepFor = (cardWidth: number, count: number): number => {
   return Math.max(tight, Math.min(roomy, (cardWidth * 2.5) / count))
 }
 
+/**
+ * Horizontal step between cards in your hand. They overlap by 37%, so this is
+ * what each additional card adds to the width of the fan.
+ */
+export const handStepFor = (cardWidth: number): number =>
+  cardWidth - Math.round(cardWidth * 0.37)
+
 const read = (): CardSize =>
   cardSizeFor(typeof window === 'undefined' ? 900 : window.innerHeight)
 

@@ -29,6 +29,8 @@ interface GameTableProps {
   onOpponentRef?: (index: number, element: HTMLDivElement | null) => void
   onPlayAnchorRef?: (seatIndex: number, element: HTMLDivElement | null) => void
   onHeapRef?: (element: HTMLDivElement | null) => void
+  /** Marks the area your hand occupies, so the opening deal can aim at it. */
+  onHandAreaRef?: (element: HTMLDivElement | null) => void
   /** Cards already spent, shown as a translucent heap in the middle. */
   discardCount?: number
   /** Cards still in the draw deck, shown under the heap. */
@@ -50,6 +52,7 @@ const GameTable = forwardRef<HTMLDivElement, GameTableProps>(
       onOpponentRef,
       onPlayAnchorRef,
       onHeapRef,
+      onHandAreaRef,
       discardCount = 0,
       deckCount = 0,
       emptyHint,
@@ -117,7 +120,11 @@ const GameTable = forwardRef<HTMLDivElement, GameTableProps>(
         {(currentUserPlayer || playerHand) && (
           <div className="panel flex shrink-0 items-center gap-4 p-3">
             {currentUserPlayer && <div className="shrink-0">{currentUserPlayer}</div>}
-            {playerHand && <div className="flex min-w-0 flex-1 justify-center">{playerHand}</div>}
+            {playerHand && (
+              <div ref={onHandAreaRef} className="flex min-w-0 flex-1 justify-center">
+                {playerHand}
+              </div>
+            )}
           </div>
         )}
       </div>
