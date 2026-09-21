@@ -5,7 +5,7 @@ import AppShell from '../components/shell/AppShell'
 import PlayersPanel, { type PanelPlayer } from '../components/game/PlayersPanel'
 import GameFeed from '../components/game/GameFeed'
 import { useGameFeed } from '../hooks/useGameFeed'
-import { fanStepFor, useCardSize } from '../hooks/useCardSize'
+import { fanStepFor, handStepFor, useCardSize } from '../hooks/useCardSize'
 import { isTrickSweep } from '../utils/trick'
 import { classifyPlay, type EffectKind } from '../utils/playEffect'
 import PlayEffect from '../components/game/PlayEffect'
@@ -15,6 +15,7 @@ import {
   fanOffset,
   fansLeft,
   calculateEllipsePosition,
+  INITIAL_HANDCARDS_COUNT,
   TOTAL_CARDS_COUNT,
   seatPlayAnchor,
 } from '../utils/tableGeometry'
@@ -82,6 +83,14 @@ export default function GamePage() {
 
   // Card deal animation state
   const [isDealingCards, setIsDealingCards] = useState(false)
+  // The opening deal sends 5 cards to every seat, so it runs at a brisker pace.
+  const [fastDeal, setFastDeal] = useState(false)
+  // True only while the opening deal is running. Your hand stays empty for the
+  // whole of it, so the five cards can never appear before they are dealt.
+  const openingDeal = fastDeal && isDealingCards
+  // Your own dealt cards turn face up as they arrive; the rest stay face down.
+  const [dealFaces, setDealFaces] = useState<Array<Card | null>>([])
+  const handAreaRef = useRef<HTMLDivElement | null>(null)
   const [dealStartPosition, setDealStartPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [dealEndPositions, setDealEndPositions] = useState<Array<{ x: number; y: number }>>([])
   const [pendingRoomData, setPendingRoomData] = useState<RoomData | null>(null)
@@ -212,6 +221,120 @@ export default function GamePage() {
             // Now check if cards are being dealt (restCardCnt decreased)
             const cardsDealt = prevRestCardCnt > 0 && prevRestCardCnt > currentRestCardCnt && param.roomData.isStart && currentRestCardCnt >= 0
 
+            // ---- opening deal: the round has just begun ----
+            const freshRound =
+              param.roomData.isStart &&
+              !roomDataRef.current?.isStart &&
+              (param.roomData.droppingCards ?? []).every((pile) => (pile?.length ?? 0) === 0) &&
+              (param.roomData.havingCards ?? []).every(
+                (hand) => (hand?.length ?? 0) === INITIAL_HANDCARDS_COUNT
+              )
+
+            if (freshRound) {
+              const dealt = param.roomData
+              const myDealIndex = dealt.userArray.findIndex((u) => u.username === user?.username)
+
+              // Lay the table out with empty hands so the cards can be seen
+              // arriving; the real hands land when the deal finishes.
+              setRoomData({ ...dealt, havingCards: dealt.userArray.map(() => []) })
+              setPendingRoomData(dealt)
+              setLoading(false)
+              setError('')
+              setMyIndex(myDealIndex)
+              prevDroppingCardsRef.current = dealt.droppingCards.map((cards) => [...cards])
+
+              let openAttempts = 0
+              const collectOpening = () => {
+                const seats = dealt.userArray.length
+
+                // Everyone else's cards land on their place on the felt.
+                const base: Array<{ x: number; y: number } | null> = []
+                for (let seat = 0; seat < seats; seat += 1) {
+                  if (seat === myDealIndex) {
+                    base.push({ x: 0, y: 0 }) // filled in from the hand area below
+                    continue
+                  }
+                  const rect = playAnchorRefs.current.get(seat)?.getBoundingClientRect()
+                  base.push(
+                    rect && rect.width > 0
+                      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+                      : null
+                  )
+                }
+
+                const deck = centerCardsRef.current?.getBoundingClientRect()
+                // Aim at the middle of your panel; if the hand area cannot be
+                // measured yet, fall back to your seat so the deal still runs.
+                const handBox = handAreaRef.current?.getBoundingClientRect()
+                const seatBox = playerPositionRefs.current.get(myDealIndex)?.getBoundingClientRect()
+                const hand =
+                  handBox && handBox.width > 0 ? handBox : seatBox && seatBox.width > 0 ? seatBox : null
+                const measured = base.every(
+                  (spot): spot is { x: number; y: number } => spot !== null
+                )
+                // After a few tries, deal to whatever we could find rather than
+                // dropping the hands on the table with no deal at all.
+                const ready = deck && hand && (measured || openAttempts >= 8)
+
+                if (ready) {
+                  const centre = { x: deck.left + deck.width / 2, y: deck.top + deck.height / 2 }
+                  for (let seat = 0; seat < seats; seat += 1) {
+                    if (!base[seat]) base[seat] = centre
+                  }
+                  setDealStartPosition({
+                    x: deck.left + deck.width / 2,
+                    y: deck.top + deck.height / 2,
+                  })
+
+                  // Your cards land across the middle of your own panel, in the
+                  // exact spots the hand will lay them out in afterwards.
+                  const myCardsDealt = dealt.havingCards[myDealIndex] ?? []
+                  const step = handStepFor(cardSize.w)
+                  const fanWidth = cardSize.w + (INITIAL_HANDCARDS_COUNT - 1) * step
+                  const firstX = hand.left + hand.width / 2 - fanWidth / 2 + cardSize.w / 2
+                  const handY = hand.top + hand.height / 2
+
+                  // Round by round, seat by seat — five passes of the table.
+                  const spots: Array<{ x: number; y: number }> = []
+                  const faces: Array<Card | null> = []
+                  for (let round = 0; round < INITIAL_HANDCARDS_COUNT; round += 1) {
+                    for (let seat = 0; seat < seats; seat += 1) {
+                      if (seat === myDealIndex) {
+                        spots.push({ x: firstX + round * step, y: handY })
+                        // Turn this one face up the moment it arrives.
+                        faces.push(myCardsDealt[round] ?? null)
+                        continue
+                      }
+                      const spot = base[seat] as { x: number; y: number }
+                      // Stack each pass slightly so the pile builds up.
+                      spots.push({ x: spot.x + round * 7, y: spot.y - round * 4 })
+                      faces.push(null)
+                    }
+                  }
+
+                  setDealEndPositions(spots)
+                  setDealFaces(faces)
+                  setFastDeal(true)
+                  setIsDealingCards(true)
+                  return
+                }
+
+                openAttempts += 1
+                if (openAttempts < 25) {
+                  setTimeout(collectOpening, 80)
+                  return
+                }
+                // The board never rendered at all — nothing left to do but show
+                // the hands, rather than leave the table stuck on empty ones.
+                setPendingRoomData(null)
+                setRoomData(dealt)
+              }
+
+              setTimeout(() => requestAnimationFrame(collectOpening), 60)
+              prevRestCardCntRef.current = currentRestCardCnt
+              return
+            }
+
             if (cardsDealt && centerCardsRef.current) {
 
               // Store the new room data to apply after animation
@@ -256,6 +379,8 @@ export default function GamePage() {
 
                 if (ready && spots.length > 0) {
                   setDealEndPositions(spots)
+                  setDealFaces([])
+                  setFastDeal(false)
                   setIsDealingCards(true)
                   return
                 }
@@ -837,6 +962,9 @@ export default function GamePage() {
                   discardCount={shownDiscardCount}
                   deckCount={deckLeft}
                   showTable={Boolean(roomData?.isStart)}
+                  onHandAreaRef={(element) => {
+                    handAreaRef.current = element
+                  }}
                   onHeapRef={(element) => {
                     heapRef.current = element
                   }}
@@ -864,9 +992,10 @@ export default function GamePage() {
                     roomData?.isStart ? (
                       <PlayerHand
                         ref={playerHandRef}
-                        cards={myCards}
+                        cards={openingDeal ? [] : myCards}
                         onCardSelectionChange={handleCardSelectionChange}
                         isMyTurn={isMyTurn && !roomData?.isPaused}
+                        showEmptyMessage={!isDealingCards}
                       />
                     ) : undefined
                   }
@@ -1078,6 +1207,9 @@ export default function GamePage() {
         endPositions={dealEndPositions}
         onAnimationComplete={handleDealAnimationComplete}
         isAnimating={isDealingCards}
+        flightMs={fastDeal ? 170 : 420}
+        gapMs={fastDeal ? 170 : 420}
+        faces={dealFaces}
       />
     </AppShell>
   )

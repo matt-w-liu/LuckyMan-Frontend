@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import Card from './Card'
-import { useCardSize } from '../hooks/useCardSize'
+import { handStepFor, useCardSize } from '../hooks/useCardSize'
 import type { Card as GameCard } from '../utils/cardValidation'
 
 interface PlayerHandProps {
@@ -8,6 +8,8 @@ interface PlayerHandProps {
   onCardSelectionChange?: (selectedCards: GameCard[]) => void
   isMyTurn?: boolean
   excludeCards?: GameCard[] // Cards to exclude from display (for animation)
+  /** Hidden while cards are being dealt into the empty hand. */
+  showEmptyMessage?: boolean
 }
 
 export interface PlayerHandRef {
@@ -20,7 +22,8 @@ const PlayerHand = forwardRef<PlayerHandRef, PlayerHandProps>(({
   cards, 
   onCardSelectionChange, 
   isMyTurn = false,
-  excludeCards = []
+  excludeCards = [],
+  showEmptyMessage = true
 }, ref) => {
   const { w: cardW } = useCardSize()
   const [selectedIndices, setSelectedIndices] = useState<number[]>([])
@@ -67,7 +70,7 @@ const PlayerHand = forwardRef<PlayerHandRef, PlayerHandProps>(({
       }
       const rect = last.getBoundingClientRect()
       // Cards overlap, so a new one sits one visible sliver past the last.
-      const step = Math.round(cardW * 0.63)
+      const step = handStepFor(cardW)
       return { x: rect.left + rect.width / 2 + step, y: rect.top + rect.height / 2 }
     },
   }))
@@ -129,9 +132,13 @@ const PlayerHand = forwardRef<PlayerHandRef, PlayerHandProps>(({
   })
 
   if (!cards || cards.length === 0) {
+    // Keep the row so the layout does not jump, and so the opening deal has
+    // something to aim at while the hand is still empty.
     return (
-      <div className="w-full text-center py-8">
-        <p className="text-mist-500">No cards in hand</p>
+      <div className="w-full">
+        <div ref={handRowRef} className="flex justify-center items-center relative min-h-[120px]">
+          {showEmptyMessage && <p className="text-mist-500">No cards in hand</p>}
+        </div>
       </div>
     )
   }

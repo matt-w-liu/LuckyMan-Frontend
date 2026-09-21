@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Card from './Card'
+import type { Card as GameCard } from '../utils/cardValidation'
 
 interface CardDealAnimationProps {
   cardCount: number // Number of cards to animate (one per player)
@@ -7,6 +8,16 @@ interface CardDealAnimationProps {
   endPositions: Array<{ x: number; y: number }>
   onAnimationComplete: () => void
   isAnimating: boolean
+  /** Flight time for one card. The opening deal uses a brisker pace. */
+  flightMs?: number
+  /** Delay between one card leaving and the next. */
+  gapMs?: number
+  /**
+   * The real card behind each dealt one, where it should be revealed on
+   * arrival. Your own cards turn face up as they land; everyone else's stay
+   * face down, so leave those null.
+   */
+  faces?: Array<GameCard | null>
 }
 
 /** How long a single card takes to travel from the deck to its player. */
@@ -28,6 +39,9 @@ export default function CardDealAnimation({
   endPositions,
   onAnimationComplete,
   isAnimating,
+  flightMs = FLIGHT,
+  gapMs = GAP,
+  faces,
 }: CardDealAnimationProps) {
   const [elapsed, setElapsed] = useState(0)
   const animationRef = useRef<number | null>(null)
@@ -48,7 +62,7 @@ export default function CardDealAnimation({
     }
 
     // The last card sets off only after everyone before it has been served.
-    const total = Math.max(dealCount - 1, 0) * GAP + FLIGHT
+    const total = Math.max(dealCount - 1, 0) * gapMs + flightMs
     const startTime = performance.now()
 
     const animate = (now: number) => {
@@ -72,7 +86,7 @@ export default function CardDealAnimation({
         animationRef.current = null
       }
     }
-  }, [isAnimating, dealCount])
+  }, [isAnimating, dealCount, flightMs, gapMs])
 
   if (!isAnimating || dealCount === 0 || endPositions.length === 0) {
     return null
@@ -92,14 +106,16 @@ export default function CardDealAnimation({
         }
 
         // Each card waits its turn, then flies on its own clock.
-        const local = (elapsed - index * GAP) / FLIGHT
+        const local = (elapsed - index * gapMs) / flightMs
         if (local <= 0) {
           return null // this player has not been dealt to yet
         }
 
         // Once it lands the card stays put: the real one only appears when the
         // whole deal finishes and the new room state is applied.
+        const landed = local >= 1
         const progress = easeInOutCubic(Math.min(local, 1))
+        const face = landed ? faces?.[index] ?? null : null
 
         const x = startPosition.x + (endPos.x - startPosition.x) * progress
         const y = startPosition.y + (endPos.y - startPosition.y) * progress
@@ -119,7 +135,12 @@ export default function CardDealAnimation({
               willChange: 'transform', // Optimize for animation
             }}
           >
-            <Card suit={0} rank={0} isFaceDown={true} />
+            {face ? (
+              // Arrived in your hand — turn it over.
+              <Card suit={face.type} rank={face.type >= 4 ? 0 : face.number} />
+            ) : (
+              <Card suit={0} rank={0} isFaceDown={true} />
+            )}
           </div>
         )
       })}
